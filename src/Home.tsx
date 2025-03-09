@@ -283,7 +283,6 @@ const Home = (props: HomeProps) => {
           {/* <Link href='/'>
             <img
               style={{
-                filter: 'invert(1)',
                 maxWidth: '200px',
                 marginLeft: 30,
                 marginTop: 10,
@@ -321,19 +320,43 @@ const Home = (props: HomeProps) => {
                 <Link href="/">
                   <img
                     style={{
-                      filter: "invert(1)",
                       maxWidth: "350px",
                     }}
                     src="/logo.png"
                     alt="logo"
                   />
                 </Link>
-              </Heading>
+</Heading>
 
-              <p>
-                6942 Rejected f00kers here to f00k shit up. 3 mints max per
-                wallet. Free. f00k f00k Mother f00kers.
-              </p>
+<p>
+  Welcome to The Anarchists Collection: the official NFT collection of Anarchy on Solana!  
+</p>
+
+<p>
+  Join our Telegram: AnarchySafeZone, and follow AnarchyOnSol on X!
+</p>
+
+<p>
+  Total number of NFTs available - 500:<br />
+  &nbsp;&nbsp;-15 Anarchist<br />
+  &nbsp;&nbsp;-35 Exalted<br />
+  &nbsp;&nbsp;-50 Cybernetic<br />
+  &nbsp;&nbsp;-75 Rare<br />
+  &nbsp;&nbsp;-125 Uncommon<br />
+  &nbsp;&nbsp;-200 Common
+</p>
+
+<p>
+  40% of mint proceeds (0.16 SOL per mint) split: 0.10 SOL burns Anarchy tokens, 0.06 SOL boosts the community fund for development and ads. 
+</p>
+
+<p>
+  40% of 5% royalties (2% of each sale) split: 1.5% burns Anarchy, 0.5% supports the community fund.
+</p>
+
+<p>
+  This ensures that even long after the collection has been fully minted, the collection will perpetually burn Anarchy and contribute to the community fund, benefiting all Anarchy holders.
+</p>
 
               {guardStates.isStarted && (
                 <MintCount>

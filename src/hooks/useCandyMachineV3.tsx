@@ -16,7 +16,6 @@ import {
   walletAdapterIdentity,
 } from "@metaplex-foundation/js";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
-
 import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import React from "react";
 import { MerkleTree } from "merkletreejs";
@@ -142,8 +141,6 @@ export default function useCandyMachineV3(
           remaining: cndy.itemsRemaining.toNumber(),
           redeemed: cndy.itemsMinted.toNumber(),
         });
-
-        return cndy;
       })
       .catch((e) => console.error("Error while fetching candy machine", e))
       .finally(() => setStatus((x) => ({ ...x, candyMachine: false })));
@@ -196,7 +193,7 @@ export default function useCandyMachineV3(
           transactionBuilders.push(
             await mintFromCandyMachineBuilder(mx, {
               candyMachine,
-              collectionUpdateAuthority: candyMachine.authorityAddress, // mx.candyMachines().pdas().authority({candyMachine: candyMachine.address})
+              collectionUpdateAuthority: candyMachine.authorityAddress,
               group: opts.groupLabel,
               guards: {
                 nftBurn: opts.nftGuards && opts.nftGuards[index]?.burn,
