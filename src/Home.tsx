@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { Paper, Snackbar } from "@material-ui/core";
 import Alert from "@material-ui/lab/Alert";
 import { DefaultCandyGuardRouteSettings, Nft } from "@metaplex-foundation/js";
@@ -9,7 +9,6 @@ import confetti from "canvas-confetti";
 import Link from "next/link";
 import Countdown from "react-countdown";
 
-import { useEffect, useMemo, useState } from "react";
 import styled from "styled-components";
 import { GatewayProvider } from "@civic/solana-gateway-react";
 import { defaultGuardGroup, network } from "./config";
@@ -128,6 +127,7 @@ const Home = (props: HomeProps) => {
 
   const [balance, setBalance] = useState<number>();
   const [mintedItems, setMintedItems] = useState<Nft[]>();
+  const [retryCount, setRetryCount] = useState(0);
 
   const [alertState, setAlertState] = useState<AlertState>({
     open: false,
@@ -165,27 +165,32 @@ const Home = (props: HomeProps) => {
     candyMachineV3.guardStates,
     candyMachineV3.prices,
   ]);
+
   useEffect(() => {
-    candyMachineV3.refresh(); // Force refresh to update startDate
     console.log("Guard Label:", guardLabel);
-    console.log("Guard States:", { ...guardStates }); // Expand object
+    console.log("Guard States:", { ...guardStates });
     console.log("Candy Machine:", {
       items: candyMachineV3.items,
       status: candyMachineV3.status,
-    }); // Expand object
+    });
     console.log("Wallet Adapter:", {
       publicKey: wallet.publicKey?.toBase58(),
       signTransaction: wallet.signTransaction ? "Available" : "Unavailable",
-    }); // Expand object
+    });
     console.log({ guards, guardStates, prices });
   }, [guardLabel, guards, guardStates, prices, wallet]);
+
   useEffect(() => {
+    let mounted = true;
     (async () => {
-      if (wallet?.publicKey) {
+      if (wallet?.publicKey && mounted) {
         const balance = await connection.getBalance(wallet.publicKey);
-        setBalance(balance / LAMPORTS_PER_SOL);
+        if (mounted) setBalance(balance / LAMPORTS_PER_SOL);
       }
     })();
+    return () => {
+      mounted = false;
+    };
   }, [wallet, connection]);
 
   useEffect(() => {
@@ -214,29 +219,51 @@ const Home = (props: HomeProps) => {
 
   const startMint = useCallback(
     async (quantityString: number = 1) => {
-      console.log("Mint Parameters:", {
-        quantityString,
-        groupLabel: guardLabel,
-      });
-      console.log("Candy Machine State:", {
-        items: candyMachineV3.items,
-        status: candyMachineV3.status,
-      });
+      if (!wallet.publicKey || !candyMachineV3) {
+        setAlertState({
+          open: true,
+          message: "Wallet or Candy Machine not ready!",
+          severity: "error",
+        });
+        return;
+      }
 
-      candyMachineV3
-        .mint(quantityString, {}) // Remove nftGuards, omit groupLabel
-        .then((items) => {
+      if (retryCount < 3) {
+        try {
+          console.log("Mint Parameters:", { quantityString });
+          console.log("Candy Machine State:", {
+            items: candyMachineV3.items,
+            status: candyMachineV3.status,
+          });
+
+          const items = await candyMachineV3.mint(quantityString, {});
           setMintedItems(items as any);
-        })
-        .catch((e) =>
-          setAlertState({
-            open: true,
-            message: e.message,
-            severity: "error",
-          })
-        );
+        } catch (e) {
+          if (e.message.includes("429")) {
+            setRetryCount(retryCount + 1);
+            setAlertState({
+              open: true,
+              message: `RPC rate limit hit. Retrying (${retryCount + 1}/3)...`,
+              severity: "warning",
+            });
+            setTimeout(() => startMint(quantityString), 2000); // Retry after 2s
+          } else {
+            setAlertState({
+              open: true,
+              message: e.message,
+              severity: "error",
+            });
+          }
+        }
+      } else {
+        setAlertState({
+          open: true,
+          message: "Max retries reached. Check RPC or try later.",
+          severity: "error",
+        });
+      }
     },
-    [candyMachineV3.mint]
+    [candyMachineV3, wallet, retryCount]
   );
 
   useEffect(() => {
@@ -302,7 +329,7 @@ const Home = (props: HomeProps) => {
               </Heading>
 
               <p>
-                Welcome to The Anarchists Collection: the official NFT collection of Anarchy on Solana!  
+                Welcome to The Anarchists Collection: the official NFT collection of Anarchy on Solana!
               </p>
 
               <p>
@@ -311,16 +338,16 @@ const Home = (props: HomeProps) => {
 
               <p>
                 Total number of NFTs available - 500:<br />
-                  -15 Anarchist<br />
-                  -35 Exalted<br />
-                  -50 Cybernetic<br />
-                  -75 Rare<br />
-                  -125 Uncommon<br />
-                  -200 Common
+                -15 Anarchist<br />
+                -35 Exalted<br />
+                -50 Cybernetic<br />
+                -75 Rare<br />
+                -125 Uncommon<br />
+                -200 Common
               </p>
 
               <p>
-                40% of mint proceeds (0.4 SOL per mint) split: 0.10 SOL burns Anarchy tokens, 0.06 SOL boosts the community fund for development and ads. 
+                40% of mint proceeds (0.4 SOL per mint) split: 0.10 SOL burns Anarchy tokens, 0.06 SOL boosts the community fund for development and ads.
               </p>
 
               <p>
@@ -353,7 +380,7 @@ const Home = (props: HomeProps) => {
                   date={guards.startTime}
                   renderer={renderGoLiveDateCounter}
                   onComplete={() => {
-                    candyMachineV3.refresh();
+                    if (candyMachineV3) candyMachineV3.refresh();
                   }}
                 />
               ) : !wallet?.publicKey ? (
@@ -362,32 +389,30 @@ const Home = (props: HomeProps) => {
                 <h1>Mint is private.</h1>
               ) : (
                 <>
-                  <>
-                    {!!candyMachineV3.items.remaining &&
-                    guardStates.hasGatekeeper &&
-                    wallet.publicKey &&
-                    wallet.signTransaction ? (
-                      <GatewayProvider
-                        wallet={{
-                          publicKey: wallet.publicKey,
-                          //@ts-ignore
-                          signTransaction: wallet.signTransaction,
-                        }}
+                  {!!candyMachineV3.items.remaining &&
+                  guardStates.hasGatekeeper &&
+                  wallet.publicKey &&
+                  wallet.signTransaction ? (
+                    <GatewayProvider
+                      wallet={{
+                        publicKey: wallet.publicKey,
+                        //@ts-ignore
+                        signTransaction: wallet.signTransaction,
+                      }}
+                      gatekeeperNetwork={guards.gatekeeperNetwork}
+                      connection={connection}
+                      cluster={
+                        process.env.NEXT_PUBLIC_SOLANA_NETWORK || "devnet"
+                      }
+                      options={{ autoShowModal: false }}
+                    >
+                      <MintButton
                         gatekeeperNetwork={guards.gatekeeperNetwork}
-                        connection={connection}
-                        cluster={
-                          process.env.NEXT_PUBLIC_SOLANA_NETWORK || "devnet"
-                        }
-                        options={{ autoShowModal: false }}
-                      >
-                        <MintButton
-                          gatekeeperNetwork={guards.gatekeeperNetwork}
-                        />
-                      </GatewayProvider>
-                    ) : (
-                      <MintButton />
-                    )}
-                  </>
+                      />
+                    </GatewayProvider>
+                  ) : (
+                    <MintButton />
+                  )}
                 </>
               )}
             </Hero>
