@@ -12,7 +12,7 @@ export const candyMachineId = new PublicKey(
     "CrX78VjrTQBvKQU5nrhLqCXr6uptfTfYqbaHMM1iRp7b"
 );
 
-export const defaultGuardGroup = "default";
+export const defaultGuardGroup = null; // Use default guards without a group
 
 export const whitelistedWallets = [
   "53VVFtLzzi3nL2p1QF591PAB8rbcbsirYepwUphtHU9Q",
