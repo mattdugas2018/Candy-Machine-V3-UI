@@ -15,6 +15,8 @@ import {
   TransactionBuilder,
   walletAdapterIdentity,
   sol,
+  DefaultCandyGuardMintSettings,
+  Serializer,
 } from "@metaplex-foundation/js";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
@@ -75,10 +77,51 @@ export default function useCandyMachineV3(
     redeemed: 0,
   });
 
-  const mx = React.useMemo(
-    () => connection && Metaplex.make(connection),
-    [connection]
-  );
+  const mx = React.useMemo(() => {
+    const metaplex = connection && Metaplex.make(connection);
+    if (metaplex) {
+      // Register the solPayment guard with full manifest
+      metaplex.candyMachines().guards().register({
+        name: "solPayment",
+        settingsBytes: 40, // 8 bytes for amount (u64), 32 for destination (PublicKey)
+        settingsSerializer: {
+          serialize: (settings: { solPayment: { amount: any; destination: PublicKey } }) => {
+            const amountBuffer = Buffer.alloc(8);
+            amountBuffer.writeBigUInt64LE(BigInt(settings.solPayment.amount.lamports.toString()));
+            const destinationBuffer = settings.solPayment.destination.toBuffer();
+            return Buffer.concat([amountBuffer, destinationBuffer]);
+          },
+          deserialize: (buffer: Buffer) => {
+            const lamports = Number(buffer.readBigUInt64LE(0)); // bigint to number (lamports)
+            const solAmount = lamports / 1_000_000_000; // Convert lamports to SOL
+            const destination = new PublicKey(buffer.slice(8, 40));
+            return [
+              { solPayment: { amount: sol(solAmount), destination } },
+              40, // Offset after reading 40 bytes
+            ];
+          },
+          description: "Serializer for solPayment guard (8 bytes amount, 32 bytes destination)",
+        } as Serializer<any>,
+        mintSettingsParser: (input: {
+          mintSettings: DefaultCandyGuardMintSettings;
+          candyMachine: PublicKey;
+          candyGuard: PublicKey;
+        }) => {
+          return {
+            arguments: Buffer.from([]), // No extra args needed
+            remainingAccounts: [], // No additional accounts
+          };
+        },
+        routeSettingsParser: () => {
+          return {
+            arguments: Buffer.from([]), // No route args
+            remainingAccounts: [], // No route accounts
+          };
+        },
+      });
+    }
+    return metaplex;
+  }, [connection]);
 
   const proofMemo = React.useMemo(() => {
     if (!candyMachineOpts.allowLists?.length) {
@@ -177,7 +220,7 @@ export default function useCandyMachineV3(
         transactionBuilders.push(
           await callCandyGuardRouteBuilder(mx, {
             candyMachine,
-            guard: "default", // Default guard group
+            guard: "solPayment", // Use registered guard name
             group: opts.groupLabel || null,
             settings: {
               solPayment: {
@@ -215,7 +258,6 @@ export default function useCandyMachineV3(
           tx.feePayer = publicKey;
           tx.recentBlockhash = blockhash.blockhash;
           const txSigners = transactionBuilders[i].getSigners();
-          // Filter signers manually instead of Set spread
           const uniqueSigners = txSigners
             .map(s => s.publicKey.toString())
             .filter((value, index, self) => self.indexOf(value) === index && value === publicKey.toString());
