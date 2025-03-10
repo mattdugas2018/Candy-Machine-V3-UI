@@ -171,7 +171,6 @@ export default function useCandyMachineV3(
         }));
 
         const transactionBuilders: TransactionBuilder[] = [];
-        // Single transaction for debug
         transactionBuilders.push(
           await mintFromCandyMachineBuilder(mx, {
             candyMachine,
@@ -189,21 +188,31 @@ export default function useCandyMachineV3(
         const transactions = transactionBuilders.map((t) =>
           t.toTransaction(blockhash)
         );
-        console.log("Transaction to sign:", transactions[0].serialize().toString('base64')); // Debug raw bytes
+        console.log("Transaction to sign (base64):", transactions[0].serialize({ requireAllSignatures: false }).toString('base64')); // Allow partial sigs for debug
+        console.log("Signers required:", transactions[0].signatures.map(sig => sig.publicKey.toString()));
 
         const signers: { [k: string]: IdentitySigner } = {};
         transactions.forEach((tx, i) => {
           tx.feePayer = publicKey;
           tx.recentBlockhash = blockhash.blockhash;
-          transactionBuilders[i].getSigners().forEach((s) => {
+          const txSigners = transactionBuilders[i].getSigners();
+          console.log("Signers from builder:", txSigners.map(s => s.publicKey.toString()));
+          txSigners.forEach((s) => {
             if ("signAllTransactions" in s) signers[s.publicKey.toString()] = s;
-            // Removed secretKey and _signer checks for 0.17.5 wallet adapter
           });
         });
+
+        if (Object.keys(signers).length === 0) {
+          throw new Error("No valid signers found for transaction");
+        }
+
         let signedTransactions = transactions;
         for (let signer in signers) {
+          console.log("Signing with:", signer);
           signedTransactions = await signers[signer].signAllTransactions(transactions);
         }
+        console.log("Signed transaction (base64):", signedTransactions[0].serialize().toString('base64'));
+
         const output = await Promise.all(
           signedTransactions.map((tx, i) => {
             return mx
@@ -248,7 +257,7 @@ export default function useCandyMachineV3(
             message = `Minting period hasn't started yet.`;
           }
         }
-        console.error(error);
+        console.error("Mint error:", error);
         throw new Error(message);
       } finally {
         setStatus((x) => ({ ...x, minting: false }));
