@@ -43,7 +43,7 @@ export default function useCandyMachineV3(
   } = {}
 ) {
   const { connection } = useConnection();
-  const wallet = useWallet();
+  const { publicKey, wallet } = useWallet(); // Use publicKey directly
   const [guardsAndGroups, setGuardsAndGroups] = React.useState<{
     default?: GuardGroup;
     [k: string]: GuardGroup;
@@ -88,7 +88,7 @@ export default function useCandyMachineV3(
         },
       };
     }
-    if (!wallet.publicKey) {
+    if (!publicKey) {
       return {
         merkles: {},
         verifyProof() {
@@ -102,7 +102,7 @@ export default function useCandyMachineV3(
           Object.assign(prev, {
             [groupLabel]: {
               tree: getMerkleTree(list),
-              proof: getMerkleProof(list, wallet.publicKey.toString()),
+              proof: getMerkleProof(list, publicKey.toString()),
             },
           }),
         {}
@@ -121,16 +121,20 @@ export default function useCandyMachineV3(
       merkles,
       verifyProof,
     };
-  }, [wallet.publicKey, candyMachineOpts.allowLists?.length]);
+  }, [publicKey, candyMachineOpts.allowLists?.length]);
 
   const fetchCandyMachine = React.useCallback(async () => {
+    if (!publicKey) throw new Error("Wallet not loaded yet!");
     return await mx.candyMachines().findByAddress({
       address: new PublicKey(candyMachineId),
     });
-  }, [candyMachineId]);
+  }, [candyMachineId, publicKey]);
 
   const refresh = React.useCallback(async () => {
-    if (!wallet.publicKey) throw new Error("Wallet not loaded yet!");
+    if (!publicKey) {
+      console.log("Skipping refresh: Wallet not loaded yet");
+      return;
+    }
 
     setStatus((x) => ({ ...x, candyMachine: true }));
     await fetchCandyMachine()
@@ -144,7 +148,7 @@ export default function useCandyMachineV3(
       })
       .catch((e) => console.error("Error while fetching candy machine", e))
       .finally(() => setStatus((x) => ({ ...x, candyMachine: false })));
-  }, [fetchCandyMachine, wallet.publicKey]);
+  }, [fetchCandyMachine, publicKey]);
 
   const mint = React.useCallback(
     async (
@@ -211,7 +215,7 @@ export default function useCandyMachineV3(
         );
         const signers: { [k: string]: IdentitySigner } = {};
         transactions.forEach((tx, i) => {
-          tx.feePayer = wallet.publicKey;
+          tx.feePayer = publicKey;
           tx.recentBlockhash = blockhash.blockhash;
           transactionBuilders[i].getSigners().forEach((s) => {
             if ("signAllTransactions" in s) signers[s.publicKey.toString()] = s;
@@ -258,11 +262,6 @@ export default function useCandyMachineV3(
           if (guards.mintLimit?.mintCounter)
             guards.mintLimit.mintCounter.count += nfts.length;
         });
-        // setItems((x) => ({
-        //   ...x,
-        //   remaining: x.remaining - nfts.length,
-        //   redeemed: x.redeemed + nfts.length,
-        // }));
       } catch (error: any) {
         let message = error.msg || "Minting failed! Please try again!";
         if (!error.msg) {
@@ -289,23 +288,23 @@ export default function useCandyMachineV3(
         return nfts.filter((a) => a);
       }
     },
-    [candyMachine, guardsAndGroups, mx, wallet?.publicKey, proofMemo, refresh]
+    [candyMachine, guardsAndGroups, mx, publicKey, proofMemo, refresh]
   );
 
   React.useEffect(() => {
-    if (!mx || !wallet.publicKey) return;
-    console.log("useEffect([mx, wallet.publicKey])");
+    if (!mx || !publicKey) return;
+    console.log("useEffect([mx, publicKey])");
     mx.use(walletAdapterIdentity(wallet));
 
     mx.rpc()
-      .getBalance(wallet.publicKey)
+      .getBalance(publicKey)
       .then((x) => x.basisPoints.toNumber())
       .then(setBalance)
       .catch((e) => console.error("Error to fetch wallet balance", e));
 
     mx.nfts()
       .findAllByOwner({
-        owner: wallet.publicKey,
+        owner: publicKey,
       })
       .then((x) =>
         setNftHoldings(x.filter((a) => a.model == "metadata") as any)
@@ -326,64 +325,67 @@ export default function useCandyMachineV3(
         balance: parseInt(x.account.data.parsed.info.tokenAmount.amount),
         decimals: x.account.data.parsed.info.tokenAmount.decimals,
       }));
-    })(wallet.publicKey).then(setAllTokens);
-  }, [mx, wallet.publicKey]);
+    })(publicKey).then(setAllTokens);
+  }, [mx, publicKey]);
 
   React.useEffect(() => {
+    if (!publicKey) return; // Wait for wallet
+    console.log("Fetching Candy Machine...");
     refresh().catch((e) =>
       console.error("Error while fetching candy machine", e)
     );
-  }, [refresh]);
+  }, [refresh, publicKey]);
 
   React.useEffect(() => {
-    const walletAddress = wallet.publicKey;
-    if (!walletAddress || !candyMachine) return;
-    console.log(
-      "useEffect([mx, wallet, nftHoldings, proofMemo, candyMachine])"
-    );
+    if (!publicKey || !candyMachine) return;
+    console.log("Fetching guard groups...");
 
     (async () => {
-      const guards = {
-        default: await parseGuardGroup(
-          {
-            guards: candyMachine.candyGuard.guards,
-            candyMachine,
-            nftHoldings,
-            verifyProof: proofMemo.verifyProof,
-            walletAddress,
-          },
-          mx
-        ),
-      };
-      await Promise.all(
-        candyMachine.candyGuard.groups.map(async (x) => {
-          guards[x.label] = await parseGuardGroup(
+      setStatus((x) => ({ ...x, guardGroups: true }));
+      try {
+        const guards = {
+          default: await parseGuardGroup(
             {
-              guards: mergeGuards([candyMachine.candyGuard.guards, x.guards]),
-              label: x.label,
+              guards: candyMachine.candyGuard.guards,
               candyMachine,
               nftHoldings,
               verifyProof: proofMemo.verifyProof,
-              walletAddress,
+              walletAddress: publicKey,
             },
             mx
-          );
-        })
-      );
-      setGuardsAndGroups(guards);
+          ),
+        };
+        await Promise.all(
+          candyMachine.candyGuard.groups.map(async (x) => {
+            guards[x.label] = await parseGuardGroup(
+              {
+                guards: mergeGuards([candyMachine.candyGuard.guards, x.guards]),
+                label: x.label,
+                candyMachine,
+                nftHoldings,
+                verifyProof: proofMemo.verifyProof,
+                walletAddress: publicKey,
+              },
+              mx
+            );
+          })
+        );
+        console.log("Guard groups fetched:", guards);
+        setGuardsAndGroups(guards);
+        setStatus((x) => ({ ...x, initialFetchGuardGroupsDone: true, guardGroups: false }));
+      } catch (e) {
+        console.error("Error fetching guard groups:", e);
+        setStatus((x) => ({ ...x, guardGroups: false }));
+      }
     })();
-  }, [wallet.publicKey, nftHoldings, proofMemo, candyMachine]);
+  }, [publicKey, nftHoldings, proofMemo, candyMachine]);
 
   const prices = React.useMemo((): {
     default?: ParsedPricesForUI;
     [k: string]: ParsedPricesForUI;
   } => {
-    // if (!status.initialFetchGuardGroupsDone) return {};
-    // const prices = {
-    // };
     return Object.entries(guardsAndGroups).reduce(
       (groupPayments, [label, guards]) => {
-        // console.log(label, guards);
         return Object.assign(groupPayments, {
           [label]: guardToPaymentUtil(guards),
         });
@@ -402,7 +404,7 @@ export default function useCandyMachineV3(
           [label]: parseGuardStates({
             guards: guards,
             candyMachine,
-            walletAddress: wallet.publicKey,
+            walletAddress: publicKey,
             tokenHoldings,
             balance,
           }),
