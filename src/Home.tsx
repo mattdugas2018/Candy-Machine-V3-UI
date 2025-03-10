@@ -117,7 +117,7 @@ const Card = styled(Paper)`
 export interface HomeProps {
   candyMachineId: PublicKey;
 }
-const candyMachinOps = {}; // Removed allowLists to use "default" guard group
+const candyMachinOps = {};
 const Home = (props: HomeProps) => {
   const { connection } = useConnection();
   const wallet = useWallet();
@@ -166,10 +166,17 @@ const Home = (props: HomeProps) => {
     candyMachineV3.prices,
   ]);
   useEffect(() => {
+    candyMachineV3.refresh(); // Force refresh to update startDate
     console.log("Guard Label:", guardLabel);
-    console.log("Guard States:", guardStates);
-    console.log("Candy Machine:", candyMachineV3);
-    console.log("Wallet Adapter:", wallet);
+    console.log("Guard States:", { ...guardStates }); // Expand object
+    console.log("Candy Machine:", {
+      items: candyMachineV3.items,
+      status: candyMachineV3.status,
+    }); // Expand object
+    console.log("Wallet Adapter:", {
+      publicKey: wallet.publicKey?.toBase58(),
+      signTransaction: wallet.signTransaction ? "Available" : "Unavailable",
+    }); // Expand object
     console.log({ guards, guardStates, prices });
   }, [guardLabel, guards, guardStates, prices, wallet]);
   useEffect(() => {
@@ -207,36 +214,17 @@ const Home = (props: HomeProps) => {
 
   const startMint = useCallback(
     async (quantityString: number = 1) => {
-      const nftGuards: NftPaymentMintSettings[] = Array(quantityString)
-        .fill(undefined)
-        .map((_, i) => {
-          return {
-            burn: guards.burn?.nfts?.length
-              ? {
-                  mint: guards.burn.nfts[i]?.mintAddress,
-                }
-              : undefined,
-            payment: guards.payment?.nfts?.length
-              ? {
-                  mint: guards.payment.nfts[i]?.mintAddress,
-                }
-              : undefined,
-            gate: guards.gate?.nfts?.length
-              ? {
-                  mint: guards.gate.nfts[i]?.mintAddress,
-                }
-              : undefined,
-          };
-        });
+      console.log("Mint Parameters:", {
+        quantityString,
+        groupLabel: guardLabel,
+      });
+      console.log("Candy Machine State:", {
+        items: candyMachineV3.items,
+        status: candyMachineV3.status,
+      });
 
-      console.log("Mint Parameters:", { quantityString, groupLabel: guardLabel, nftGuards });
-      console.log("Candy Machine State:", candyMachineV3);
-      // debugger;
       candyMachineV3
-        .mint(quantityString, {
-          groupLabel: guardLabel,
-          nftGuards,
-        })
+        .mint(quantityString, {}) // Remove nftGuards, omit groupLabel
         .then((items) => {
           setMintedItems(items as any);
         })
@@ -248,7 +236,7 @@ const Home = (props: HomeProps) => {
           })
         );
     },
-    [candyMachineV3.mint, guards]
+    [candyMachineV3.mint]
   );
 
   useEffect(() => {
@@ -278,17 +266,6 @@ const Home = (props: HomeProps) => {
     <main>
       <>
         <Header>
-          {/* <Link href='/'>
-            <img
-              style={{
-                maxWidth: '200px',
-                marginLeft: 30,
-                marginTop: 10,
-              }}
-              src='/logo.png'
-              alt='logo'
-            />
-          </Link> */}
           <WalletContainer>
             <Wallet>
               {wallet ? (
@@ -311,8 +288,6 @@ const Home = (props: HomeProps) => {
             ))}
           </div>
           <StyledContainer>
-            {/* <MintNavigation /> */}
-
             <Hero>
               <Heading>
                 <Link href="/">
@@ -383,8 +358,6 @@ const Home = (props: HomeProps) => {
                 />
               ) : !wallet?.publicKey ? (
                 <ConnectButton>Connect Wallet</ConnectButton>
-              // ) : !guardStates.canPayFor ? (
-              //   <h1>You cannot pay for the mint</h1>
               ) : !guardStates.isWalletWhitelisted ? (
                 <h1>Mint is private.</h1>
               ) : (
