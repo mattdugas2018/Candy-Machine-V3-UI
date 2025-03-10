@@ -5,18 +5,15 @@ import {
   IdentitySigner,
   Metadata,
   Metaplex,
-  mintFromCandyMachineBuilder,
   Nft,
   NftWithToken,
   PublicKey,
   Sft,
   SftWithToken,
-  TransactionBuilder,
   walletAdapterIdentity,
   sol,
-  DefaultCandyGuardMintSettings,
-  Serializer,
 } from "@metaplex-foundation/js";
+import { Keypair } from "@solana/web3.js";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import React from "react";
@@ -78,49 +75,6 @@ export default function useCandyMachineV3(
 
   const mx = React.useMemo(() => {
     const metaplex = connection && Metaplex.make(connection);
-    if (metaplex) {
-      // Register custom solPayment guard as fallback (optional)
-      metaplex.candyMachines().guards().register({
-        name: "solPayment",
-        settingsBytes: 40,
-        settingsSerializer: {
-          serialize: (settings: { solPayment: { amount: any; destination: PublicKey } }) => {
-            const amountBuffer = Buffer.alloc(8);
-            amountBuffer.writeBigUInt64LE(BigInt(settings.solPayment.amount.lamports.toString()));
-            const destinationBuffer = settings.solPayment.destination.toBuffer();
-            return Buffer.concat([amountBuffer, destinationBuffer]);
-          },
-          deserialize: (buffer: Buffer) => {
-            const lamports = Number(buffer.readBigUInt64LE(0));
-            const solAmount = lamports / 1_000_000_000;
-            const destination = new PublicKey(buffer.slice(8, 40));
-            return [
-              { solPayment: { amount: sol(solAmount), destination } },
-              40,
-            ];
-          },
-          description: "Serializer for solPayment guard (8 bytes amount, 32 bytes destination)",
-        } as Serializer<any>,
-        mintSettingsParser: (input: {
-          mintSettings: DefaultCandyGuardMintSettings;
-          candyMachine: PublicKey;
-          candyGuard: PublicKey;
-        }) => {
-          return {
-            arguments: Buffer.from([]),
-            remainingAccounts: [],
-          };
-        },
-        routeSettingsParser: () => {
-          const argsBuffer = Buffer.alloc(1);
-          argsBuffer.writeUInt8(0, 0);
-          return {
-            arguments: argsBuffer,
-            remainingAccounts: [],
-          };
-        },
-      });
-    }
     return metaplex;
   }, [connection]);
 
@@ -215,82 +169,27 @@ export default function useCandyMachineV3(
           minting: true,
         }));
 
-        const transactionBuilders: TransactionBuilder[] = [];
+        const treasury = new PublicKey("94FEw5KdMSSuqENzUTUnM1sNXJXQgnArWz9SevJTBmkA");
 
-        // Mint directly with solPayment guard settings
-        transactionBuilders.push(
-          await mintFromCandyMachineBuilder(mx, {
-            candyMachine,
-            collectionUpdateAuthority: candyMachine.authorityAddress,
-            group: opts.groupLabel || null,
-            guards: {
-              solPayment: {
-                amount: sol(0.4), // Your 0.4 SOL price
-                destination: candyMachine.authorityAddress,
-              },
-              nftBurn: opts.nftGuards && opts.nftGuards[0]?.burn,
-              nftPayment: opts.nftGuards && opts.nftGuards[0]?.payment,
-              nftGate: opts.nftGuards && opts.nftGuards[0]?.gate,
+        const { nft, response } = await mx.candyMachines().mint({
+          candyMachine,
+          collectionUpdateAuthority: candyMachine.authorityAddress,
+          group: opts.groupLabel || null,
+          guards: {
+            solPayment: {
+              amount: sol(0.4),
+              destination: treasury,
             },
-          })
-        );
+            nftBurn: opts.nftGuards && opts.nftGuards[0]?.burn,
+            nftPayment: opts.nftGuards && opts.nftGuards[0]?.payment,
+            nftGate: opts.nftGuards && opts.nftGuards[0]?.gate,
+          },
+        }, { commitment: "finalized" });
 
-        const blockhash = await mx.rpc().getLatestBlockhash();
-        const transactions = transactionBuilders.map((t) =>
-          t.toTransaction(blockhash)
-        );
-        console.log("Mint tx (base64):", transactions[0].serialize({ requireAllSignatures: false }).toString('base64'));
-        console.log("Signers required:", transactions[0].signatures.map(sig => sig.publicKey.toString()));
+        console.log("Minted NFT:", nft);
+        console.log("Transaction signature:", response.signature);
 
-        const signers: { [k: string]: IdentitySigner } = {};
-        transactions.forEach((tx, i) => {
-          tx.feePayer = publicKey;
-          tx.recentBlockhash = blockhash.blockhash;
-          const txSigners = transactionBuilders[i].getSigners();
-          const uniqueSigners = txSigners
-            .map(s => s.publicKey.toString())
-            .filter((value, index, self) => self.indexOf(value) === index && value === publicKey.toString());
-          console.log(`Unique wallet signers for tx ${i}:`, uniqueSigners);
-          txSigners.forEach((s) => {
-            if ("signAllTransactions" in s && s.publicKey.toString() === publicKey.toString()) {
-              signers[s.publicKey.toString()] = s;
-            }
-          });
-        });
-
-        if (Object.keys(signers).length === 0) {
-          throw new Error("No valid wallet signers found for transaction");
-        }
-
-        let signedTransactions = transactions;
-        for (let signer in signers) {
-          console.log("Signing with:", signer);
-          signedTransactions = await signers[signer].signAllTransactions(transactions);
-        }
-        console.log("Signed mint tx (base64):", signedTransactions[0].serialize().toString('base64'));
-
-        const output = await Promise.all(
-          signedTransactions.map((tx, i) => {
-            return mx
-              .rpc()
-              .sendAndConfirmTransaction(tx, { commitment: "finalized" })
-              .then((tx) => ({
-                ...tx,
-                context: transactionBuilders[i].getContext() as any,
-              }));
-          })
-        );
-        nfts = await Promise.all(
-          output.map(({ context }) =>
-            mx
-              .nfts()
-              .findByMint({
-                mintAddress: context.mintSigner.publicKey,
-                tokenAddress: context.tokenAddress,
-              })
-              .catch((e) => null)
-          )
-        );
+        nfts = [nft];
         Object.values(guardsAndGroups).forEach((guards) => {
           if (guards.mintLimit?.mintCounter)
             guards.mintLimit.mintCounter.count += nfts.length;
