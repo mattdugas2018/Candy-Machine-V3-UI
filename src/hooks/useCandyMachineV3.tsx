@@ -14,6 +14,7 @@ import {
   SftWithToken,
   TransactionBuilder,
   walletAdapterIdentity,
+  sol,
 } from "@metaplex-foundation/js";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
@@ -171,11 +172,28 @@ export default function useCandyMachineV3(
         }));
 
         const transactionBuilders: TransactionBuilder[] = [];
+
+        // Step 1: Call Candy Guard route with settings
+        transactionBuilders.push(
+          await callCandyGuardRouteBuilder(mx, {
+            candyMachine,
+            guard: "default", // Default guard group
+            group: opts.groupLabel || null,
+            settings: {
+              solPayment: {
+                amount: sol(0.4), // Your 0.4 SOL price from logs
+                destination: candyMachine.authorityAddress, // Assuming authority collects
+              },
+            },
+          })
+        );
+
+        // Step 2: Mint from Candy Machine
         transactionBuilders.push(
           await mintFromCandyMachineBuilder(mx, {
             candyMachine,
             collectionUpdateAuthority: candyMachine.authorityAddress,
-            group: opts.groupLabel,
+            group: opts.groupLabel || null,
             guards: {
               nftBurn: opts.nftGuards && opts.nftGuards[0]?.burn,
               nftPayment: opts.nftGuards && opts.nftGuards[0]?.payment,
@@ -188,7 +206,8 @@ export default function useCandyMachineV3(
         const transactions = transactionBuilders.map((t) =>
           t.toTransaction(blockhash)
         );
-        console.log("Transaction to sign (base64):", transactions[0].serialize({ requireAllSignatures: false }).toString('base64')); // Allow partial sigs for debug
+        console.log("Guard route tx (base64):", transactions[0].serialize({ requireAllSignatures: false }).toString('base64'));
+        console.log("Mint tx (base64):", transactions[1].serialize({ requireAllSignatures: false }).toString('base64'));
         console.log("Signers required:", transactions[0].signatures.map(sig => sig.publicKey.toString()));
 
         const signers: { [k: string]: IdentitySigner } = {};
@@ -196,14 +215,20 @@ export default function useCandyMachineV3(
           tx.feePayer = publicKey;
           tx.recentBlockhash = blockhash.blockhash;
           const txSigners = transactionBuilders[i].getSigners();
-          console.log("Signers from builder:", txSigners.map(s => s.publicKey.toString()));
+          // Filter signers manually instead of Set spread
+          const uniqueSigners = txSigners
+            .map(s => s.publicKey.toString())
+            .filter((value, index, self) => self.indexOf(value) === index && value === publicKey.toString());
+          console.log(`Unique wallet signers for tx ${i}:`, uniqueSigners);
           txSigners.forEach((s) => {
-            if ("signAllTransactions" in s) signers[s.publicKey.toString()] = s;
+            if ("signAllTransactions" in s && s.publicKey.toString() === publicKey.toString()) {
+              signers[s.publicKey.toString()] = s;
+            }
           });
         });
 
         if (Object.keys(signers).length === 0) {
-          throw new Error("No valid signers found for transaction");
+          throw new Error("No valid wallet signers found for transaction");
         }
 
         let signedTransactions = transactions;
@@ -211,7 +236,8 @@ export default function useCandyMachineV3(
           console.log("Signing with:", signer);
           signedTransactions = await signers[signer].signAllTransactions(transactions);
         }
-        console.log("Signed transaction (base64):", signedTransactions[0].serialize().toString('base64'));
+        console.log("Signed guard route tx (base64):", signedTransactions[0].serialize().toString('base64'));
+        console.log("Signed mint tx (base64):", signedTransactions[1].serialize().toString('base64'));
 
         const output = await Promise.all(
           signedTransactions.map((tx, i) => {
