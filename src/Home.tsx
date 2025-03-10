@@ -126,7 +126,7 @@ const Home = (props: HomeProps) => {
   );
 
   const [balance, setBalance] = useState<number>();
-  const [mintedItems, setMintedItems] = useState<Nft[]>();
+  const [mintedItems, setMintedItems] = useState<Nft[]>([]);
   const [retryCount, setRetryCount] = useState(0);
 
   const [alertState, setAlertState] = useState<AlertState>({
@@ -194,7 +194,7 @@ const Home = (props: HomeProps) => {
   }, [wallet, connection]);
 
   useEffect(() => {
-    if (mintedItems?.length === 0) throwConfetti();
+    if (mintedItems?.length > 0) throwConfetti(); // Only trigger confetti if items are actually minted
   }, [mintedItems]);
 
   const openOnSolscan = useCallback((mint) => {
@@ -228,6 +228,33 @@ const Home = (props: HomeProps) => {
         return;
       }
 
+      if (!guardStates.isStarted) {
+        setAlertState({
+          open: true,
+          message: "Mint has not started yet!",
+          severity: "error",
+        });
+        return;
+      }
+
+      if (!guardStates.canPayFor) {
+        setAlertState({
+          open: true,
+          message: "Cannot pay for the mint!",
+          severity: "error",
+        });
+        return;
+      }
+
+      if (!candyMachineV3.items.remaining) {
+        setAlertState({
+          open: true,
+          message: "Sold out!",
+          severity: "error",
+        });
+        return;
+      }
+
       if (retryCount < 3) {
         try {
           console.log("Mint Parameters:", { quantityString });
@@ -246,7 +273,7 @@ const Home = (props: HomeProps) => {
               message: `RPC rate limit hit. Retrying (${retryCount + 1}/3)...`,
               severity: "warning",
             });
-            setTimeout(() => startMint(quantityString), 2000); // Retry after 2s
+            setTimeout(() => startMint(quantityString), 2000);
           } else {
             setAlertState({
               open: true,
@@ -263,7 +290,7 @@ const Home = (props: HomeProps) => {
         });
       }
     },
-    [candyMachineV3, wallet, retryCount]
+    [candyMachineV3, wallet, retryCount, guardStates]
   );
 
   useEffect(() => {
