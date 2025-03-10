@@ -173,8 +173,12 @@ const Home = (props: HomeProps) => {
     candyMachineV3.prices,
   ]);
   useEffect(() => {
-    console.log({ guardLabel, guards, guardStates, prices });
-  }, [guardLabel, guards, guardStates, prices]);
+    console.log("Guard Label:", guardLabel);
+    console.log("Guard States:", guardStates);
+    console.log("Candy Machine:", candyMachineV3);
+    console.log("Wallet Adapter:", wallet);
+    console.log({ guards, guardStates, prices });
+  }, [guardLabel, guards, guardStates, prices, wallet]);
   useEffect(() => {
     (async () => {
       if (wallet?.publicKey) {
@@ -232,7 +236,8 @@ const Home = (props: HomeProps) => {
           };
         });
 
-      console.log({ nftGuards });
+      console.log("Mint Parameters:", { quantityString, groupLabel: guardLabel, nftGuards });
+      console.log("Candy Machine State:", candyMachineV3);
       // debugger;
       candyMachineV3
         .mint(quantityString, {
@@ -338,12 +343,12 @@ const Home = (props: HomeProps) => {
 
 <p>
   Total number of NFTs available - 500:<br />
-  &nbsp;&nbsp;-15 Anarchist<br />
-  &nbsp;&nbsp;-35 Exalted<br />
-  &nbsp;&nbsp;-50 Cybernetic<br />
-  &nbsp;&nbsp;-75 Rare<br />
-  &nbsp;&nbsp;-125 Uncommon<br />
-  &nbsp;&nbsp;-200 Common
+    -15 Anarchist<br />
+    -35 Exalted<br />
+    -50 Cybernetic<br />
+    -75 Rare<br />
+    -125 Uncommon<br />
+    -200 Common
 </p>
 
 <p>
@@ -441,7 +446,8 @@ const Home = (props: HomeProps) => {
               </div>
             </div>
           </NftWrapper>
-          <NftWrapper2>
+          <Nf
+tWrapper2>
             <div className="marquee-wrapper second">
               <div className="marquee">
                 {[...Array(21)].map((item, index) => (
