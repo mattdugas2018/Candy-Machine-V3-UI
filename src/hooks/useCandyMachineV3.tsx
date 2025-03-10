@@ -1,5 +1,4 @@
 import {
-  callCandyGuardRouteBuilder,
   CandyMachine,
   getMerkleProof,
   getMerkleTree,
@@ -80,10 +79,10 @@ export default function useCandyMachineV3(
   const mx = React.useMemo(() => {
     const metaplex = connection && Metaplex.make(connection);
     if (metaplex) {
-      // Register the solPayment guard with full manifest
+      // Register custom solPayment guard as fallback (optional)
       metaplex.candyMachines().guards().register({
         name: "solPayment",
-        settingsBytes: 40, // 8 bytes for amount (u64), 32 for destination (PublicKey)
+        settingsBytes: 40,
         settingsSerializer: {
           serialize: (settings: { solPayment: { amount: any; destination: PublicKey } }) => {
             const amountBuffer = Buffer.alloc(8);
@@ -92,12 +91,12 @@ export default function useCandyMachineV3(
             return Buffer.concat([amountBuffer, destinationBuffer]);
           },
           deserialize: (buffer: Buffer) => {
-            const lamports = Number(buffer.readBigUInt64LE(0)); // bigint to number (lamports)
-            const solAmount = lamports / 1_000_000_000; // Convert lamports to SOL
+            const lamports = Number(buffer.readBigUInt64LE(0));
+            const solAmount = lamports / 1_000_000_000;
             const destination = new PublicKey(buffer.slice(8, 40));
             return [
               { solPayment: { amount: sol(solAmount), destination } },
-              40, // Offset after reading 40 bytes
+              40,
             ];
           },
           description: "Serializer for solPayment guard (8 bytes amount, 32 bytes destination)",
@@ -108,17 +107,16 @@ export default function useCandyMachineV3(
           candyGuard: PublicKey;
         }) => {
           return {
-            arguments: Buffer.from([]), // No extra args needed for mint
-            remainingAccounts: [], // No additional accounts
+            arguments: Buffer.from([]),
+            remainingAccounts: [],
           };
         },
         routeSettingsParser: () => {
-          // solPayment route instruction needs a discriminator (u8)
           const argsBuffer = Buffer.alloc(1);
-          argsBuffer.writeUInt8(0, 0); // Discriminator for solPayment route (typically 0)
+          argsBuffer.writeUInt8(0, 0);
           return {
             arguments: argsBuffer,
-            remainingAccounts: [], // No extra accounts needed for solPayment route
+            remainingAccounts: [],
           };
         },
       });
@@ -219,28 +217,17 @@ export default function useCandyMachineV3(
 
         const transactionBuilders: TransactionBuilder[] = [];
 
-        // Step 1: Call Candy Guard route with settings
-        transactionBuilders.push(
-          await callCandyGuardRouteBuilder(mx, {
-            candyMachine,
-            guard: "solPayment", // Use registered guard name
-            group: opts.groupLabel || null,
-            settings: {
-              solPayment: {
-                amount: sol(0.4), // Your 0.4 SOL price from logs
-                destination: candyMachine.authorityAddress, // Assuming authority collects
-              },
-            },
-          })
-        );
-
-        // Step 2: Mint from Candy Machine
+        // Mint directly with solPayment guard settings
         transactionBuilders.push(
           await mintFromCandyMachineBuilder(mx, {
             candyMachine,
             collectionUpdateAuthority: candyMachine.authorityAddress,
             group: opts.groupLabel || null,
             guards: {
+              solPayment: {
+                amount: sol(0.4), // Your 0.4 SOL price
+                destination: candyMachine.authorityAddress,
+              },
               nftBurn: opts.nftGuards && opts.nftGuards[0]?.burn,
               nftPayment: opts.nftGuards && opts.nftGuards[0]?.payment,
               nftGate: opts.nftGuards && opts.nftGuards[0]?.gate,
@@ -252,8 +239,7 @@ export default function useCandyMachineV3(
         const transactions = transactionBuilders.map((t) =>
           t.toTransaction(blockhash)
         );
-        console.log("Guard route tx (base64):", transactions[0].serialize({ requireAllSignatures: false }).toString('base64'));
-        console.log("Mint tx (base64):", transactions[1].serialize({ requireAllSignatures: false }).toString('base64'));
+        console.log("Mint tx (base64):", transactions[0].serialize({ requireAllSignatures: false }).toString('base64'));
         console.log("Signers required:", transactions[0].signatures.map(sig => sig.publicKey.toString()));
 
         const signers: { [k: string]: IdentitySigner } = {};
@@ -281,8 +267,7 @@ export default function useCandyMachineV3(
           console.log("Signing with:", signer);
           signedTransactions = await signers[signer].signAllTransactions(transactions);
         }
-        console.log("Signed guard route tx (base64):", signedTransactions[0].serialize().toString('base64'));
-        console.log("Signed mint tx (base64):", signedTransactions[1].serialize().toString('base64'));
+        console.log("Signed mint tx (base64):", signedTransactions[0].serialize().toString('base64'));
 
         const output = await Promise.all(
           signedTransactions.map((tx, i) => {
