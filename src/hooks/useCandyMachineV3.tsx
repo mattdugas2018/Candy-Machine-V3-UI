@@ -108,14 +108,17 @@ export default function useCandyMachineV3(
           candyGuard: PublicKey;
         }) => {
           return {
-            arguments: Buffer.from([]), // No extra args needed
+            arguments: Buffer.from([]), // No extra args needed for mint
             remainingAccounts: [], // No additional accounts
           };
         },
         routeSettingsParser: () => {
+          // solPayment route instruction needs a discriminator (u8)
+          const argsBuffer = Buffer.alloc(1);
+          argsBuffer.writeUInt8(0, 0); // Discriminator for solPayment route (typically 0)
           return {
-            arguments: Buffer.from([]), // No route args
-            remainingAccounts: [], // No route accounts
+            arguments: argsBuffer,
+            remainingAccounts: [], // No extra accounts needed for solPayment route
           };
         },
       });
