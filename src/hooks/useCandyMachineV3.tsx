@@ -152,7 +152,7 @@ export default function useCandyMachineV3(
 
   const mint = React.useCallback(
     async (
-      quantityString: number = 1,
+      quantityString: number = 1, // Forced to 1 for debug
       opts: {
         groupLabel?: string;
         nftGuards?: NftPaymentMintSettings[];
@@ -160,11 +160,6 @@ export default function useCandyMachineV3(
     ) => {
       if (!guardsAndGroups[opts.groupLabel || "default"])
         throw new Error("Unknown guard group label");
-
-      const allowList = opts.groupLabel &&
-        proofMemo.merkles[opts.groupLabel] && {
-          proof: proofMemo.merkles[opts.groupLabel].proof,
-        };
 
       let nfts: (Sft | SftWithToken | Nft | NftWithToken)[] = [];
       try {
@@ -176,65 +171,38 @@ export default function useCandyMachineV3(
         }));
 
         const transactionBuilders: TransactionBuilder[] = [];
-        if (allowList) {
-          if (!proofMemo.merkles[opts.groupLabel || "default"].proof.length)
-            throw new Error("User is not in allowed list");
+        // Single transaction for debug
+        transactionBuilders.push(
+          await mintFromCandyMachineBuilder(mx, {
+            candyMachine,
+            collectionUpdateAuthority: candyMachine.authorityAddress,
+            group: opts.groupLabel,
+            guards: {
+              nftBurn: opts.nftGuards && opts.nftGuards[0]?.burn,
+              nftPayment: opts.nftGuards && opts.nftGuards[0]?.payment,
+              nftGate: opts.nftGuards && opts.nftGuards[0]?.gate,
+            },
+          })
+        );
 
-          transactionBuilders.push(
-            callCandyGuardRouteBuilder(mx, {
-              candyMachine,
-              guard: "allowList",
-              group: opts.groupLabel,
-              settings: {
-                path: "proof",
-                merkleProof:
-                  proofMemo.merkles[opts.groupLabel || "default"].proof,
-              },
-            })
-          );
-        }
-        for (let index = 0; index < quantityString; index++) {
-          transactionBuilders.push(
-            await mintFromCandyMachineBuilder(mx, {
-              candyMachine,
-              collectionUpdateAuthority: candyMachine.authorityAddress,
-              group: opts.groupLabel,
-              guards: {
-                nftBurn: opts.nftGuards && opts.nftGuards[index]?.burn,
-                nftPayment: opts.nftGuards && opts.nftGuards[index]?.payment,
-                nftGate: opts.nftGuards && opts.nftGuards[index]?.gate,
-                allowList,
-              },
-            })
-          );
-        }
         const blockhash = await mx.rpc().getLatestBlockhash();
-
         const transactions = transactionBuilders.map((t) =>
           t.toTransaction(blockhash)
         );
+        console.log("Transaction to sign:", transactions[0].serialize().toString('base64')); // Debug raw bytes
+
         const signers: { [k: string]: IdentitySigner } = {};
         transactions.forEach((tx, i) => {
           tx.feePayer = publicKey;
           tx.recentBlockhash = blockhash.blockhash;
           transactionBuilders[i].getSigners().forEach((s) => {
             if ("signAllTransactions" in s) signers[s.publicKey.toString()] = s;
-            else if ("secretKey" in s) tx.partialSign(s);
-            // @ts-ignore
-            else if ("_signer" in s) tx.partialSign(s._signer);
+            // Removed secretKey and _signer checks for 0.17.5 wallet adapter
           });
         });
         let signedTransactions = transactions;
-
         for (let signer in signers) {
-          await signers[signer].signAllTransactions(transactions);
-        }
-        if (allowList) {
-          const allowListCallGuardRouteTx = signedTransactions.shift();
-          const allowListCallGuardRouteTxBuilder = transactionBuilders.shift();
-          await mx.rpc().sendAndConfirmTransaction(allowListCallGuardRouteTx, {
-            commitment: "processed",
-          });
+          signedTransactions = await signers[signer].signAllTransactions(transactions);
         }
         const output = await Promise.all(
           signedTransactions.map((tx, i) => {
@@ -294,7 +262,7 @@ export default function useCandyMachineV3(
   React.useEffect(() => {
     if (!mx || !publicKey) return;
     console.log("useEffect([mx, publicKey])");
-    mx.use(walletAdapterIdentity(wallet.adapter)); // Fixed: Use wallet.adapter
+    mx.use(walletAdapterIdentity(wallet.adapter));
 
     mx.rpc()
       .getBalance(publicKey)
