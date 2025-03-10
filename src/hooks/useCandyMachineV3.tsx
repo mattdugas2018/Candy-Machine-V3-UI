@@ -306,7 +306,7 @@ export default function useCandyMachineV3(
         setGuardsAndGroups(guards);
         setStatus((x) => ({ ...x, initialFetchGuardGroupsDone: true, guardGroups: false }));
       } catch (e) {
-        console.error("Error fetching guard groups:", e);
+        console.error("Error fetching guard groups: ", e);
         setStatus((x) => ({ ...x, guardGroups: false }));
       }
     })();
