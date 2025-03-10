@@ -117,14 +117,7 @@ const Card = styled(Paper)`
 export interface HomeProps {
   candyMachineId: PublicKey;
 }
-const candyMachinOps = {
-  allowLists: [
-    {
-      list: require("../cmv3-demo-initialization/allowlist.json"),
-      groupLabel: "waoed",
-    },
-  ],
-};
+const candyMachinOps = {}; // Removed allowLists to use "default" guard group
 const Home = (props: HomeProps) => {
   const { connection } = useConnection();
   const wallet = useWallet();
@@ -331,37 +324,37 @@ const Home = (props: HomeProps) => {
                     alt="logo"
                   />
                 </Link>
-</Heading>
+              </Heading>
 
-<p>
-  Welcome to The Anarchists Collection: the official NFT collection of Anarchy on Solana!  
-</p>
+              <p>
+                Welcome to The Anarchists Collection: the official NFT collection of Anarchy on Solana!  
+              </p>
 
-<p>
-  Join our Telegram: AnarchySafeZone, and follow AnarchyOnSol on X!
-</p>
+              <p>
+                Join our Telegram: AnarchySafeZone, and follow AnarchyOnSol on X!
+              </p>
 
-<p>
-  Total number of NFTs available - 500:<br />
-    -15 Anarchist<br />
-    -35 Exalted<br />
-    -50 Cybernetic<br />
-    -75 Rare<br />
-    -125 Uncommon<br />
-    -200 Common
-</p>
+              <p>
+                Total number of NFTs available - 500:<br />
+                  -15 Anarchist<br />
+                  -35 Exalted<br />
+                  -50 Cybernetic<br />
+                  -75 Rare<br />
+                  -125 Uncommon<br />
+                  -200 Common
+              </p>
 
-<p>
-  40% of mint proceeds (0.16 SOL per mint) split: 0.10 SOL burns Anarchy tokens, 0.06 SOL boosts the community fund for development and ads. 
-</p>
+              <p>
+                40% of mint proceeds (0.4 SOL per mint) split: 0.10 SOL burns Anarchy tokens, 0.06 SOL boosts the community fund for development and ads. 
+              </p>
 
-<p>
-  40% of 5% royalties (2% of each sale) split: 1.5% burns Anarchy, 0.5% supports the community fund.
-</p>
+              <p>
+                40% of 5% royalties (2% of each sale) split: 1.5% burns Anarchy, 0.5% supports the community fund.
+              </p>
 
-<p>
-  This ensures that even long after the collection has been fully minted, the collection will perpetually burn Anarchy and contribute to the community fund, benefiting all Anarchy holders.
-</p>
+              <p>
+                This ensures that even long after the collection has been fully minted, the collection will perpetually burn Anarchy and contribute to the community fund, benefiting all Anarchy holders.
+              </p>
 
               {guardStates.isStarted && (
                 <MintCount>
@@ -446,8 +439,7 @@ const Home = (props: HomeProps) => {
               </div>
             </div>
           </NftWrapper>
-          <Nf
-tWrapper2>
+          <NftWrapper2>
             <div className="marquee-wrapper second">
               <div className="marquee">
                 {[...Array(21)].map((item, index) => (
