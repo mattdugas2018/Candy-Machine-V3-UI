@@ -43,7 +43,7 @@ export default function useCandyMachineV3(
   } = {}
 ) {
   const { connection } = useConnection();
-  const { publicKey, wallet } = useWallet(); // Use publicKey directly
+  const { publicKey, wallet } = useWallet();
   const [guardsAndGroups, setGuardsAndGroups] = React.useState<{
     default?: GuardGroup;
     [k: string]: GuardGroup;
@@ -294,7 +294,7 @@ export default function useCandyMachineV3(
   React.useEffect(() => {
     if (!mx || !publicKey) return;
     console.log("useEffect([mx, publicKey])");
-    mx.use(walletAdapterIdentity(wallet));
+    mx.use(walletAdapterIdentity(wallet.adapter)); // Fixed: Use wallet.adapter
 
     mx.rpc()
       .getBalance(publicKey)
@@ -329,7 +329,7 @@ export default function useCandyMachineV3(
   }, [mx, publicKey]);
 
   React.useEffect(() => {
-    if (!publicKey) return; // Wait for wallet
+    if (!publicKey) return;
     console.log("Fetching Candy Machine...");
     refresh().catch((e) =>
       console.error("Error while fetching candy machine", e)
