@@ -189,6 +189,25 @@ export default function useCandyMachineV3(
         console.log("Wallet publicKey:", publicKey?.toString() || "No wallet connected");
         console.log("Connection RPC:", connection.rpcEndpoint);
 
+        // Build the transaction manually to log it
+        const txBuilder = mx.candyMachines().builders().mint(mintArgs, { commitment: "finalized" });
+        const { transactions } = await txBuilder.toTransactionWithMeta();
+        const tx = transactions[0]; // First transaction in the builder
+        console.log("Raw transaction:", JSON.stringify({
+          recentBlockhash: tx.recentBlockhash,
+          feePayer: tx.feePayer?.toString(),
+          instructions: tx.instructions.map((ix) => ({
+            programId: ix.programId.toString(),
+            keys: ix.keys.map((key) => ({
+              pubkey: key.pubkey.toString(),
+              isSigner: key.isSigner,
+              isWritable: key.isWritable,
+            })),
+            data: ix.data.toString("hex"),
+          })),
+          signatures: tx.signatures,
+        }, null, 2));
+
         const { nft, response } = await mx.candyMachines().mint(mintArgs, { commitment: "finalized" });
 
         console.log("Minted NFT:", JSON.stringify(nft, null, 2));
