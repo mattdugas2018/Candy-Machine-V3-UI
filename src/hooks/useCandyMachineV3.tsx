@@ -13,7 +13,7 @@ import {
   walletAdapterIdentity,
   sol,
 } from "@metaplex-foundation/js";
-import { Keypair } from "@solana/web3.js";
+import { Keypair, Transaction } from "@solana/web3.js";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import React from "react";
@@ -190,9 +190,9 @@ export default function useCandyMachineV3(
         console.log("Connection RPC:", connection.rpcEndpoint);
 
         // Build the transaction manually to log it
-        const txBuilder = mx.candyMachines().builders().mint(mintArgs);
-        const { transactions } = await txBuilder.toTransactionWithMeta();
-        const tx = transactions[0]; // First transaction in the builder
+        const txBuilder = await mx.candyMachines().builders().mint(mintArgs);
+        const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+        const tx = await txBuilder.toTransaction({ blockhash, lastValidBlockHeight });
         console.log("Raw transaction:", JSON.stringify({
           recentBlockhash: tx.recentBlockhash,
           feePayer: tx.feePayer?.toString(),
