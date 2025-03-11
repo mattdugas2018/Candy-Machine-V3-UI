@@ -13,7 +13,7 @@ import {
   walletAdapterIdentity,
   sol,
 } from "@metaplex-foundation/js";
-import { Keypair, Transaction } from "@solana/web3.js";
+import { Keypair, Transaction, Connection } from "@solana/web3.js";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import React from "react";
@@ -42,7 +42,7 @@ export default function useCandyMachineV3(
   } = {}
 ) {
   const { connection } = useConnection();
-  const { publicKey, wallet } = useWallet();
+  const { publicKey, wallet, signTransaction } = useWallet();
   const [guardsAndGroups, setGuardsAndGroups] = React.useState<{
     default?: GuardGroup;
     [k: string]: GuardGroup;
@@ -163,6 +163,7 @@ export default function useCandyMachineV3(
       let nfts: (Sft | SftWithToken | Nft | NftWithToken)[] = [];
       try {
         if (!candyMachine) throw new Error("Candy Machine not loaded yet!");
+        if (!signTransaction) throw new Error("Wallet signing not available!");
 
         setStatus((x) => ({
           ...x,
@@ -189,12 +190,13 @@ export default function useCandyMachineV3(
         console.log("Wallet publicKey:", publicKey?.toString() || "No wallet connected");
         console.log("Connection RPC:", connection.rpcEndpoint);
 
-        // Build the transaction manually to log and fix it
+        // Build the transaction manually
         const txBuilder = await mx.candyMachines().builders().mint(mintArgs);
         const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+        console.log("Last valid block height:", lastValidBlockHeight);
         let tx = await txBuilder.toTransaction({ blockhash, lastValidBlockHeight });
 
-        // Identify and fix the mint account signer issue
+        // Fix mint account signer if detected
         const mintAccountPubkey = tx.instructions[0].keys.find(
           (key) => key.pubkey.toBase58() !== publicKey?.toBase58() && key.isSigner
         )?.pubkey;
@@ -204,7 +206,7 @@ export default function useCandyMachineV3(
             if (ix.programId.toBase58() === "11111111111111111111111111111111") { // System Program
               ix.keys = ix.keys.map((key) => {
                 if (key.pubkey.equals(mintAccountPubkey)) {
-                  return { ...key, isSigner: false }; // Correct the mint account to not sign
+                  return { ...key, isSigner: false };
                 }
                 return key;
               });
@@ -228,10 +230,20 @@ export default function useCandyMachineV3(
           signatures: tx.signatures,
         }, null, 2));
 
-        const { nft, response } = await mx.candyMachines().mint(mintArgs, { commitment: "finalized" });
+        // Manually serialize and sign the transaction
+        tx.recentBlockhash = blockhash;
+        tx.feePayer = publicKey;
+        const signedTx = await signTransaction(tx);
+        const txSignature = await connection.sendRawTransaction(signedTx.serialize());
+
+        console.log("Transaction signature:", txSignature);
+        await connection.confirmTransaction(txSignature, "finalized");
+
+        const nft = await mx.nfts().findByMint({
+          mintAddress: tx.instructions[0].keys[1].pubkey, // Mint account from first instruction
+        });
 
         console.log("Minted NFT:", JSON.stringify(nft, null, 2));
-        console.log("Transaction signature:", response.signature);
 
         nfts = [nft];
         Object.values(guardsAndGroups).forEach((guards) => {
@@ -264,7 +276,7 @@ export default function useCandyMachineV3(
         return nfts.filter((a) => a);
       }
     },
-    [candyMachine, guardsAndGroups, mx, publicKey, proofMemo, refresh]
+    [candyMachine, guardsAndGroups, mx, publicKey, proofMemo, refresh, signTransaction]
   );
 
   React.useEffect(() => {
