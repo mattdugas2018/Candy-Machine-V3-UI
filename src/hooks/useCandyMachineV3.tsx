@@ -151,7 +151,7 @@ export default function useCandyMachineV3(
 
   const mint = React.useCallback(
     async (
-      quantityString: number = 1, // Forced to 1 for debug
+      quantityString: number = 1,
       opts: {
         groupLabel?: string;
         nftGuards?: NftPaymentMintSettings[];
@@ -170,8 +170,7 @@ export default function useCandyMachineV3(
         }));
 
         const treasury = new PublicKey("94FEw5KdMSSuqENzUTUnM1sNXJXQgnArWz9SevJTBmkA");
-
-        const { nft, response } = await mx.candyMachines().mint({
+        const mintArgs = {
           candyMachine,
           collectionUpdateAuthority: candyMachine.authorityAddress,
           group: opts.groupLabel || null,
@@ -184,9 +183,15 @@ export default function useCandyMachineV3(
             nftPayment: opts.nftGuards && opts.nftGuards[0]?.payment,
             nftGate: opts.nftGuards && opts.nftGuards[0]?.gate,
           },
-        }, { commitment: "finalized" });
+        };
 
-        console.log("Minted NFT:", nft);
+        console.log("Mint args:", JSON.stringify(mintArgs, null, 2));
+        console.log("Wallet publicKey:", publicKey?.toString() || "No wallet connected");
+        console.log("Connection RPC:", connection.rpcEndpoint);
+
+        const { nft, response } = await mx.candyMachines().mint(mintArgs, { commitment: "finalized" });
+
+        console.log("Minted NFT:", JSON.stringify(nft, null, 2));
         console.log("Transaction signature:", response.signature);
 
         nfts = [nft];
@@ -212,7 +217,7 @@ export default function useCandyMachineV3(
             message = `Minting period hasn't started yet.`;
           }
         }
-        console.error("Mint error:", error);
+        console.error("Mint error details:", error);
         throw new Error(message);
       } finally {
         setStatus((x) => ({ ...x, minting: false }));
