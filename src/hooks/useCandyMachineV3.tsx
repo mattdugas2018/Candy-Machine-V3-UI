@@ -190,7 +190,7 @@ export default function useCandyMachineV3(
         console.log("Connection RPC:", connection.rpcEndpoint);
 
         // Build the transaction manually to log it
-        const txBuilder = mx.candyMachines().builders().mint(mintArgs, { commitment: "finalized" });
+        const txBuilder = mx.candyMachines().builders().mint(mintArgs);
         const { transactions } = await txBuilder.toTransactionWithMeta();
         const tx = transactions[0]; // First transaction in the builder
         console.log("Raw transaction:", JSON.stringify({
