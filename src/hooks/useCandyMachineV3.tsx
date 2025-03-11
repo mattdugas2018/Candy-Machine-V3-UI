@@ -189,11 +189,31 @@ export default function useCandyMachineV3(
         console.log("Wallet publicKey:", publicKey?.toString() || "No wallet connected");
         console.log("Connection RPC:", connection.rpcEndpoint);
 
-        // Build the transaction manually to log it
+        // Build the transaction manually to log and fix it
         const txBuilder = await mx.candyMachines().builders().mint(mintArgs);
         const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
-        const tx = await txBuilder.toTransaction({ blockhash, lastValidBlockHeight });
-        console.log("Raw transaction:", JSON.stringify({
+        let tx = await txBuilder.toTransaction({ blockhash, lastValidBlockHeight });
+
+        // Identify and fix the mint account signer issue
+        const mintAccountPubkey = tx.instructions[0].keys.find(
+          (key) => key.pubkey.toBase58() !== publicKey?.toBase58() && key.isSigner
+        )?.pubkey;
+        if (mintAccountPubkey) {
+          console.log("Detected potential mint account as signer:", mintAccountPubkey.toBase58());
+          tx.instructions = tx.instructions.map((ix) => {
+            if (ix.programId.toBase58() === "11111111111111111111111111111111") { // System Program
+              ix.keys = ix.keys.map((key) => {
+                if (key.pubkey.equals(mintAccountPubkey)) {
+                  return { ...key, isSigner: false }; // Correct the mint account to not sign
+                }
+                return key;
+              });
+            }
+            return ix;
+          });
+        }
+
+        console.log("Fixed transaction:", JSON.stringify({
           recentBlockhash: tx.recentBlockhash,
           feePayer: tx.feePayer?.toString(),
           instructions: tx.instructions.map((ix) => ({
