@@ -374,7 +374,7 @@ const Home = (props: HomeProps) => {
               </p>
 
               <p>
-                40% of mint proceeds (0.4 SOL per mint) split: 0.10 SOL burns Anarchy tokens, 0.06 SOL boosts the community fund for development and ads.
+                40% of mint proceeds (0.16 SOL per mint) split: 0.10 SOL burns Anarchy tokens, 0.06 SOL boosts the community fund for development and ads.
               </p>
 
               <p>
