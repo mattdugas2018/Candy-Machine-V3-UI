@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "engines": {
-    "node": "18.x"
+    "node": ">=20.18.0"
   },
   "scripts": {
     "dev": "next dev",
@@ -12,6 +12,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "js-sha3": "^0.8.0",
     "@civic/solana-gateway-react": "^0.11.0",
     "@material-ui/core": "^4.12.3",
     "@material-ui/icons": "^4.11.2",
@@ -26,10 +27,10 @@
     "@metaplex-foundation/umi-signer-wallet-adapters": "^1.1.1",
     "@solana/spl-token": "^0.3.6",
     "@solana/spl-token-metadata": "0.1.5",
-    "@solana/wallet-adapter-base": "^0.9.18",
-    "@solana/wallet-adapter-react": "^0.15.20",
-    "@solana/wallet-adapter-react-ui": "^0.9.18",
-    "@solana/wallet-adapter-wallets": "0.18.0",
+    "@solana/wallet-adapter-base": "^0.9.23",
+    "@solana/wallet-adapter-react": "^0.15.35",
+    "@solana/wallet-adapter-react-ui": "^0.9.34",
+    "@solana/wallet-adapter-wallets": "^0.19.32",
     "@solana/web3.js": "^1.66.2",
     "canvas-confetti": "^1.4.0",
     "next": "12.3.1",

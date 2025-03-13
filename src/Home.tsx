@@ -8,11 +8,9 @@ import { LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
 import confetti from "canvas-confetti";
 import Link from "next/link";
 import Countdown from "react-countdown";
-
 import styled from "styled-components";
 import { GatewayProvider } from "@civic/solana-gateway-react";
 import { defaultGuardGroup, network } from "./config";
-
 import { MultiMintButton } from "./MultiMintButton";
 import {
   Heading,
@@ -33,6 +31,7 @@ import {
   ParsedPricesForUI,
 } from "./hooks/types";
 import { guardToLimitUtil } from "./hooks/utils";
+import Image from "next/image";
 
 const Header = styled.div`
   display: flex;
@@ -136,14 +135,16 @@ const Home = (props: HomeProps) => {
   });
 
   const { guardLabel, guards, guardStates, prices } = useMemo(() => {
-    const guardLabel = defaultGuardGroup;
+    const guardLabel = defaultGuardGroup; // Should be "default"
+    console.log("Selected guard label:", guardLabel); // Debug
     return {
       guardLabel,
       guards:
         candyMachineV3.guards[guardLabel] ||
         candyMachineV3.guards.default ||
         {},
-      guardStates: candyMachineV3.guardStates[guardLabel] ||
+      guardStates:
+        candyMachineV3.guardStates[guardLabel] ||
         candyMachineV3.guardStates.default || {
           isStarted: true,
           isEnded: false,
@@ -153,7 +154,8 @@ const Home = (props: HomeProps) => {
           isWalletWhitelisted: true,
           hasGatekeeper: false,
         },
-      prices: candyMachineV3.prices[guardLabel] ||
+      prices:
+        candyMachineV3.prices[guardLabel] ||
         candyMachineV3.prices.default || {
           payment: [],
           burn: [],
@@ -166,38 +168,19 @@ const Home = (props: HomeProps) => {
     candyMachineV3.prices,
   ]);
 
-  useEffect(() => {
-    console.log("Guard Label:", guardLabel);
-    console.log("Guard States:", { ...guardStates });
-    console.log("Candy Machine:", {
-      items: candyMachineV3.items,
-      status: candyMachineV3.status,
+  const throwConfetti = useCallback(() => {
+    confetti({
+      particleCount: 400,
+      spread: 70,
+      origin: { y: 0.6 },
     });
-    console.log("Wallet Adapter:", {
-      publicKey: wallet.publicKey?.toBase58(),
-      signTransaction: wallet.signTransaction ? "Available" : "Unavailable",
-    });
-    console.log({ guards, guardStates, prices });
-  }, [guardLabel, guards, guardStates, prices, wallet]);
+  }, []);
 
   useEffect(() => {
-    let mounted = true;
-    (async () => {
-      if (wallet?.publicKey && mounted) {
-        const balance = await connection.getBalance(wallet.publicKey);
-        if (mounted) setBalance(balance / LAMPORTS_PER_SOL);
-      }
-    })();
-    return () => {
-      mounted = false;
-    };
-  }, [wallet, connection]);
+    if (mintedItems?.length > 0) throwConfetti();
+  }, [mintedItems, throwConfetti]);
 
-  useEffect(() => {
-    if (mintedItems?.length > 0) throwConfetti(); // Only trigger confetti if items are actually minted
-  }, [mintedItems]);
-
-  const openOnSolscan = useCallback((mint) => {
+  const openOnSolscan = useCallback((mint: string) => {
     window.open(
       `https://solscan.io/address/${mint}${
         [WalletAdapterNetwork.Devnet, WalletAdapterNetwork.Testnet].includes(
@@ -208,14 +191,6 @@ const Home = (props: HomeProps) => {
       }`
     );
   }, []);
-
-  const throwConfetti = useCallback(() => {
-    confetti({
-      particleCount: 400,
-      spread: 70,
-      origin: { y: 0.6 },
-    });
-  }, [confetti]);
 
   const startMint = useCallback(
     async (quantityString: number = 1) => {
@@ -294,6 +269,41 @@ const Home = (props: HomeProps) => {
   );
 
   useEffect(() => {
+    console.log("Guard Label:", guardLabel);
+    console.log("Guard States:", { ...guardStates });
+    console.log("Candy Machine:", {
+      items: candyMachineV3.items,
+      status: candyMachineV3.status,
+    });
+    console.log("Wallet Adapter:", {
+      publicKey: wallet.publicKey?.toBase58(),
+      signTransaction: wallet.signTransaction ? "Available" : "Unavailable",
+    });
+    console.log({ guards, guardStates, prices });
+  }, [
+    guardLabel,
+    guards,
+    guardStates,
+    prices,
+    wallet,
+    candyMachineV3.items,
+    candyMachineV3.status,
+  ]);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      if (wallet?.publicKey && mounted) {
+        const balance = await connection.getBalance(wallet.publicKey);
+        if (mounted) setBalance(balance / LAMPORTS_PER_SOL);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [wallet, connection]);
+
+  useEffect(() => {
     console.log({ candyMachine: candyMachineV3.candyMachine });
   }, [candyMachineV3.candyMachine]);
 
@@ -345,12 +355,14 @@ const Home = (props: HomeProps) => {
             <Hero>
               <Heading>
                 <Link href="/">
-                  <img
+                  <Image
                     style={{
                       maxWidth: "350px",
                     }}
                     src="/logo.png"
                     alt="logo"
+                    width={350}
+                    height={350}
                   />
                 </Link>
               </Heading>
@@ -453,11 +465,11 @@ const Home = (props: HomeProps) => {
             <div className="marquee-wrapper">
               <div className="marquee">
                 {[...Array(21)].map((item, index) => (
-                  <img
+                  <Image
                     key={index}
                     src={`/nfts/${index + 1}.jpeg`}
-                    height="200px"
-                    width="200px"
+                    height={200}
+                    width={200}
                     alt=""
                   />
                 ))}
@@ -468,11 +480,11 @@ const Home = (props: HomeProps) => {
             <div className="marquee-wrapper second">
               <div className="marquee">
                 {[...Array(21)].map((item, index) => (
-                  <img
+                  <Image
                     key={index}
                     src={`/nfts/${index + 1}.jpeg`}
-                    height="200px"
-                    width="200px"
+                    height={200}
+                    width={200}
                     alt=""
                   />
                 ))}

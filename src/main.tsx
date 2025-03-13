@@ -8,13 +8,9 @@ import {
   LedgerWalletAdapter,
   PhantomWalletAdapter,
   SafePalWalletAdapter,
-  SlopeWalletAdapter,
   SolflareWalletAdapter,
-  SolletExtensionWalletAdapter,
-  SolletWalletAdapter,
   SolongWalletAdapter,
 } from "@solana/wallet-adapter-wallets";
-
 import { useMemo } from "react";
 
 import Home from "./Home";
@@ -57,10 +53,7 @@ const Main = ({}) => {
       new LedgerWalletAdapter(),
       new PhantomWalletAdapter(),
       new SafePalWalletAdapter(),
-      new SlopeWalletAdapter({ network }),
       new SolflareWalletAdapter({ network }),
-      new SolletExtensionWalletAdapter(),
-      new SolletWalletAdapter(),
       new SolongWalletAdapter(),
     ],
     []

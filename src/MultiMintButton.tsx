@@ -83,6 +83,7 @@ export const NumericField = styled.input`
     -webkit-appearance: none;
   }
 `;
+
 function usePrevious<T>(value: T): T | undefined {
   const ref = useRef<T>();
   useEffect(() => {
@@ -90,8 +91,10 @@ function usePrevious<T>(value: T): T | undefined {
   }, [value]);
   return ref.current;
 }
-const deepClone = (items: PaymentRequired[]) =>
+
+const deepClone = (items: PaymentRequired[]): PaymentRequired[] =>
   items.map((item) => ({ ...item }));
+
 export const MultiMintButton = ({
   onMint,
   candyMachine,
@@ -133,6 +136,7 @@ export const MultiMintButton = ({
         : 0.012,
     [mintCount, prices]
   );
+
   const totalTokenCosts = useMemo((): PaymentRequired[] => {
     if (!prices) return [];
     const maxPriceHash: { [k: string]: number } = {};
@@ -152,6 +156,7 @@ export const MultiMintButton = ({
     });
     return payments;
   }, [mintCount, prices]);
+
   const totalTokenCostsString = useMemo(() => {
     return totalTokenCosts.reduce(
       (text, price) => `${text} + ${price.price} ${price.label}`,
@@ -172,7 +177,6 @@ export const MultiMintButton = ({
     ) {
       setIsMinting(true);
     }
-    // console.log("change: ", GatewayStatus[gatewayStatus]);
   }, [previousGatewayStatus, gatewayStatus, setIsMinting]);
 
   useEffect(() => {
@@ -184,9 +188,9 @@ export const MultiMintButton = ({
   }, [waitForActiveToken, gatewayStatus, onMint, mintCount]);
 
   function incrementValue() {
-    var numericField = document.querySelector(".mint-qty") as HTMLInputElement;
+    const numericField = document.querySelector(".mint-qty") as HTMLInputElement;
     if (numericField) {
-      var value = parseInt(numericField.value);
+      let value = parseInt(numericField.value);
       if (!isNaN(value) && value < 10) {
         value++;
         numericField.value = "" + value;
@@ -196,9 +200,9 @@ export const MultiMintButton = ({
   }
 
   function decrementValue() {
-    var numericField = document.querySelector(".mint-qty") as HTMLInputElement;
+    const numericField = document.querySelector(".mint-qty") as HTMLInputElement;
     if (numericField) {
-      var value = parseInt(numericField.value);
+      let value = parseInt(numericField.value);
       if (!isNaN(value) && value > 1) {
         value--;
         numericField.value = "" + value;
@@ -207,8 +211,8 @@ export const MultiMintButton = ({
     }
   }
 
-  function updateMintCount(target: any) {
-    var value = parseInt(target.value);
+  function updateMintCount(target: HTMLInputElement) {
+    let value = parseInt(target.value);
     if (!isNaN(value)) {
       if (value > 10) {
         value = 10;
@@ -223,8 +227,8 @@ export const MultiMintButton = ({
 
   function updateAmounts(qty: number) {
     setMintCount(qty);
-    // setTotalCost(Math.round(qty * (price + 0.012) * 1000) / 1000); // 0.012 = approx of account creation fees
   }
+
   const disabled = useMemo(
     () =>
       loading ||
@@ -233,8 +237,9 @@ export const MultiMintButton = ({
       isEnded ||
       !isActive ||
       mintCount > limit,
-    [loading, isSoldOut, isMinting, isEnded, !isActive]
+    [loading, isSoldOut, isMinting, isEnded, isActive, limit, mintCount]
   );
+
   return (
     <div>
       <div>
@@ -252,7 +257,7 @@ export const MultiMintButton = ({
           min={1}
           max={Math.min(limit, 10)}
           value={mintCount}
-          onChange={(e) => updateMintCount(e.target as any)}
+          onChange={(e) => updateMintCount(e.target as HTMLInputElement)}
         />
         <Plus
           disabled={disabled || limit <= mintCount}
@@ -286,7 +291,9 @@ export const MultiMintButton = ({
             "CONNECTING..."
           ) : isSoldOut ? (
             "SOLD OUT"
-          ) : isActive ? guardStates.messages.length ? (guardStates.messages[0]) : (
+          ) : isActive ? (guardStates.messages.length ? (
+            guardStates.messages[0]
+          ) : (
             mintCount > limit ? (
               "LIMIT REACHED"
             ) : isMinting || loading ? (
@@ -294,7 +301,7 @@ export const MultiMintButton = ({
             ) : (
               "MINT"
             )
-          ) : isEnded ? (
+          )) : isEnded ? (
             "ENDED"
           ) : (
             "UNAVAILABLE"
@@ -307,9 +314,9 @@ export const MultiMintButton = ({
           {totalTokenCostsString}
         </h3>
       )}
-        {guardStates.messages?.map((m, i) => (
-          <p key={i}>{m}</p>
-        ))}
+      {guardStates.messages?.map((m, i) => (
+        <p key={i}>{m}</p>
+      ))}
     </div>
   );
-};
+}

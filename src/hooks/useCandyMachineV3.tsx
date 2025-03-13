@@ -1,7 +1,5 @@
 import {
   CandyMachine,
-  getMerkleProof,
-  getMerkleTree,
   IdentitySigner,
   Metadata,
   Metaplex,
@@ -17,7 +15,7 @@ import { Keypair, Transaction, Connection } from "@solana/web3.js";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import React from "react";
-import { MerkleTree } from "merkletreejs";
+import { MerkleTree } from "../helpers/MerkleTree";
 import {
   AllowLists,
   CustomCandyGuardMintSettings,
@@ -95,39 +93,54 @@ export default function useCandyMachineV3(
         },
       };
     }
-    const merkles: { [k: string]: { tree: MerkleTree; proof: Uint8Array[] } } =
+
+    const merkles: { [k: string]: { tree: MerkleTree<string>; proof: Buffer[] } } =
       candyMachineOpts.allowLists.reduce(
-        (prev, { groupLabel, list }) =>
-          Object.assign(prev, {
+        (prev, { groupLabel, list }) => {
+          // Convert list elements to strings
+          const stringList = list.map((item) =>
+            typeof item === "string" ? item : Buffer.from(item).toString("hex")
+          );
+          const tree = new MerkleTree<string>(stringList);
+          const leaf = publicKey.toString();
+          const leafIndex = stringList.indexOf(leaf);
+          const proof = leafIndex !== -1 ? tree.getProof(leafIndex) : [];
+          return Object.assign(prev, {
             [groupLabel]: {
-              tree: getMerkleTree(list),
-              proof: getMerkleProof(list, publicKey.toString()),
+              tree,
+              proof,
             },
-          }),
+          });
+        },
         {}
       );
-    const verifyProof = (
-      merkleRoot: Uint8Array | string,
-      label = "default"
-    ) => {
-      let merkle = merkles[label];
-      if (!merkle) return;
-      const verifiedProof = !!merkle.proof.length;
-      const compareRoot = merkle.tree.getRoot().equals(Buffer.from(merkleRoot));
-      return verifiedProof && compareRoot;
+
+    const verifyProof = (merkleRoot: Uint8Array | string, label = "default") => {
+      const merkle = merkles[label];
+      if (!merkle) return false;
+      const root = Buffer.from(merkleRoot);
+      const stringList = candyMachineOpts.allowLists
+        .find((al) => al.groupLabel === label)
+        ?.list.map((item) =>
+          typeof item === "string" ? item : Buffer.from(item).toString("hex")
+        ) || [];
+      const leafIndex = stringList.indexOf(publicKey.toString());
+      if (leafIndex === -1) return false;
+      return merkle.tree.verifyProof(leafIndex, merkle.proof, root);
     };
+
     return {
       merkles,
       verifyProof,
     };
-  }, [publicKey, candyMachineOpts.allowLists?.length]);
+  }, [publicKey, candyMachineOpts.allowLists]);
 
   const fetchCandyMachine = React.useCallback(async () => {
     if (!publicKey) throw new Error("Wallet not loaded yet!");
     return await mx.candyMachines().findByAddress({
       address: new PublicKey(candyMachineId),
     });
-  }, [candyMachineId, publicKey]);
+  }, [candyMachineId, publicKey, mx]);
 
   const refresh = React.useCallback(async () => {
     if (!publicKey) {
@@ -157,92 +170,46 @@ export default function useCandyMachineV3(
         nftGuards?: NftPaymentMintSettings[];
       } = {}
     ) => {
-      if (!guardsAndGroups[opts.groupLabel || "default"])
-        throw new Error("Unknown guard group label");
+      const groupLabel = opts.groupLabel || "default";
+      if (!guardsAndGroups[groupLabel]) {
+        console.error("Guard group not found:", groupLabel);
+        throw new Error(`Unknown guard group label: ${groupLabel}`);
+      }
 
       let nfts: (Sft | SftWithToken | Nft | NftWithToken)[] = [];
       try {
         if (!candyMachine) throw new Error("Candy Machine not loaded yet!");
         if (!signTransaction) throw new Error("Wallet signing not available!");
+        if (!publicKey) throw new Error("Wallet public key not available!");
 
-        setStatus((x) => ({
-          ...x,
-          minting: true,
-        }));
+        setStatus((x) => ({ ...x, minting: true }));
 
         const treasury = new PublicKey("94FEw5KdMSSuqENzUTUnM1sNXJXQgnArWz9SevJTBmkA");
         const mintArgs = {
           candyMachine,
           collectionUpdateAuthority: candyMachine.authorityAddress,
-          group: opts.groupLabel || null,
+          group: groupLabel === "default" ? null : groupLabel,
           guards: {
             solPayment: {
               amount: sol(0.4),
               destination: treasury,
             },
-            nftBurn: opts.nftGuards && opts.nftGuards[0]?.burn,
-            nftPayment: opts.nftGuards && opts.nftGuards[0]?.payment,
-            nftGate: opts.nftGuards && opts.nftGuards[0]?.gate,
           },
         };
 
         console.log("Mint args:", JSON.stringify(mintArgs, null, 2));
-        console.log("Wallet publicKey:", publicKey?.toString() || "No wallet connected");
+        console.log("Wallet publicKey:", publicKey.toString());
         console.log("Connection RPC:", connection.rpcEndpoint);
 
-        // Build the transaction manually
-        const txBuilder = await mx.candyMachines().builders().mint(mintArgs);
-        const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
-        console.log("Last valid block height:", lastValidBlockHeight);
-        let tx = await txBuilder.toTransaction({ blockhash, lastValidBlockHeight });
-
-        // Fix mint account signer if detected
-        const mintAccountPubkey = tx.instructions[0].keys.find(
-          (key) => key.pubkey.toBase58() !== publicKey?.toBase58() && key.isSigner
-        )?.pubkey;
-        if (mintAccountPubkey) {
-          console.log("Detected potential mint account as signer:", mintAccountPubkey.toBase58());
-          tx.instructions = tx.instructions.map((ix) => {
-            if (ix.programId.toBase58() === "11111111111111111111111111111111") { // System Program
-              ix.keys = ix.keys.map((key) => {
-                if (key.pubkey.equals(mintAccountPubkey)) {
-                  return { ...key, isSigner: false };
-                }
-                return key;
-              });
-            }
-            return ix;
+        const { nft, response } = await mx
+          .candyMachines()
+          .mint(mintArgs, {
+            payer: mx.identity(),
+            commitment: "finalized",
           });
-        }
+        const signature = response.signature;
 
-        console.log("Fixed transaction:", JSON.stringify({
-          recentBlockhash: tx.recentBlockhash,
-          feePayer: tx.feePayer?.toString(),
-          instructions: tx.instructions.map((ix) => ({
-            programId: ix.programId.toString(),
-            keys: ix.keys.map((key) => ({
-              pubkey: key.pubkey.toString(),
-              isSigner: key.isSigner,
-              isWritable: key.isWritable,
-            })),
-            data: ix.data.toString("hex"),
-          })),
-          signatures: tx.signatures,
-        }, null, 2));
-
-        // Manually serialize and sign the transaction
-        tx.recentBlockhash = blockhash;
-        tx.feePayer = publicKey;
-        const signedTx = await signTransaction(tx);
-        const txSignature = await connection.sendRawTransaction(signedTx.serialize());
-
-        console.log("Transaction signature:", txSignature);
-        await connection.confirmTransaction(txSignature, "finalized");
-
-        const nft = await mx.nfts().findByMint({
-          mintAddress: tx.instructions[0].keys[1].pubkey, // Mint account from first instruction
-        });
-
+        console.log("Transaction signature:", signature);
         console.log("Minted NFT:", JSON.stringify(nft, null, 2));
 
         nfts = [nft];
@@ -251,36 +218,29 @@ export default function useCandyMachineV3(
             guards.mintLimit.mintCounter.count += nfts.length;
         });
       } catch (error: any) {
-        let message = error.msg || "Minting failed! Please try again!";
-        if (!error.msg) {
-          if (!error.message) {
-            message = "Transaction Timeout! Please try again.";
-          } else if (error.message.indexOf("0x138")) {
-          } else if (error.message.indexOf("0x137")) {
-            message = `SOLD OUT!`;
-          } else if (error.message.indexOf("0x135")) {
-            message = `Insufficient funds to mint. Please fund your wallet.`;
-          }
-        } else {
-          if (error.code === 311) {
-            message = `SOLD OUT!`;
-          } else if (error.code === 312) {
-            message = `Minting period hasn't started yet.`;
-          }
+        console.error("Minting failed:", error);
+        let message = error.message || "Minting failed! Please try again!";
+        if (error instanceof Error && error.name === "WalletSignTransactionError") {
+          message = `Wallet signing error: ${error.message}`;
+        } else if (error.code === 429) {
+          message = "RPC rate limit exceeded. Retrying...";
+        } else if (error.message?.includes("0x135")) {
+          message = "Insufficient funds to mint. Please fund your wallet.";
+        } else if (error.message?.includes("0x137")) {
+          message = "SOLD OUT!";
         }
-        console.error("Mint error details:", error);
         throw new Error(message);
       } finally {
         setStatus((x) => ({ ...x, minting: false }));
         refresh();
-        return nfts.filter((a) => a);
       }
+      return nfts.filter((a) => a);
     },
-    [candyMachine, guardsAndGroups, mx, publicKey, proofMemo, refresh, signTransaction]
+    [candyMachine, guardsAndGroups, mx, publicKey, refresh, signTransaction, connection]
   );
 
   React.useEffect(() => {
-    if (!mx || !publicKey) return;
+    if (!mx || !publicKey || !wallet?.adapter) return;
     console.log("useEffect([mx, publicKey])");
     mx.use(walletAdapterIdentity(wallet.adapter));
 
@@ -295,7 +255,7 @@ export default function useCandyMachineV3(
         owner: publicKey,
       })
       .then((x) =>
-        setNftHoldings(x.filter((a) => a.model == "metadata") as any)
+        setNftHoldings(x.filter((a) => a.model === "metadata") as any)
       )
       .catch((e) => console.error("Failed to fetch wallet nft holdings", e));
 
@@ -314,7 +274,7 @@ export default function useCandyMachineV3(
         decimals: x.account.data.parsed.info.tokenAmount.decimals,
       }));
     })(publicKey).then(setAllTokens);
-  }, [mx, publicKey]);
+  }, [mx, publicKey, wallet, connection]);
 
   React.useEffect(() => {
     if (!publicKey) return;
@@ -322,7 +282,7 @@ export default function useCandyMachineV3(
     refresh().catch((e) =>
       console.error("Error while fetching candy machine", e)
     );
-  }, [refresh, publicKey]);
+  }, [refresh, publicKey, mx]); // Fixed: Added mx
 
   React.useEffect(() => {
     if (!publicKey || !candyMachine) return;
@@ -359,10 +319,15 @@ export default function useCandyMachineV3(
           })
         );
         console.log("Guard groups fetched:", guards);
-        setGuardsAndGroups(guards);
-        setStatus((x) => ({ ...x, initialFetchGuardGroupsDone: true, guardGroups: false }));
+        setGuardsAndGroups(guards || { default: {} }); // Fallback to empty default
+        setStatus((x) => ({
+          ...x,
+          initialFetchGuardGroupsDone: true,
+          guardGroups: false,
+        }));
       } catch (e) {
         console.error("Error fetching guard groups: ", e);
+        setGuardsAndGroups({ default: {} }); // Fallback on error
         setStatus((x) => ({ ...x, guardGroups: false }));
       }
     })();
@@ -399,7 +364,7 @@ export default function useCandyMachineV3(
         }),
       {}
     );
-  }, [guardsAndGroups, tokenHoldings, balance]);
+  }, [guardsAndGroups, tokenHoldings, balance, candyMachine, publicKey]);
 
   React.useEffect(() => {
     console.log({ guardsAndGroups, guardStates, prices });
